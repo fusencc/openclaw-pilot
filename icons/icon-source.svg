@@ -1,0 +1,77 @@
+<!--
+# 文件说明书 (Folder Manual Template)
+## 核心功能 (Core Function)
+提供扩展与网页图标的统一矢量主稿，使用透明背景的圆环图形表达品牌入口图标。
+
+## 输入 (Input)
+图标系统需要的品牌配色与尺寸导出需求，当前以深色外环、青蓝主环、橙色 claw accent 组成。
+
+## 输出 (Output)
+输出可被导出为 16/32/48/128/180 等尺寸的高质量 PNG/ICO，以及可直接被网页使用的 SVG 图标。
+
+## 定位 (Position)
+该文件是 icons 目录中的图标源文件，负责承载唯一的可编辑矢量版本，供其他位图资源派生。
+
+## 依赖 (Dependency)
+- `manifest.json` 使用导出的 PNG 作为扩展图标入口
+- `src/openclaw/ui/public/favicon.svg` 复用同一视觉语言作为网页 favicon
+- `assets/icon128-BTAbtSSb.png` 作为侧边栏品牌图的位图版本
+
+## 维护规则 (Maintenance Rules)
+1. 每次修改代码逻辑后，必须检查并更新上述的【核心功能】、【输入】、【输出】等信息，确保文档与代码一致。
+2. 禁止修改或删除本【维护规则】章节的内容。
+3. 修改完成后，必须扫描当前文件所在的文件夹目录，找到对应的 [当前文件夹名称]_README.md 文档，并同步更新该 README 中关于本文件的描述信息。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <linearGradient id="ring-gradient" x1="48" y1="36" x2="208" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#74F3FF"/>
+      <stop offset="0.45" stop-color="#36C8FF"/>
+      <stop offset="1" stop-color="#5A6CFF"/>
+    </linearGradient>
+    <linearGradient id="accent-gradient" x1="169" y1="45" x2="205" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFB55E"/>
+      <stop offset="1" stop-color="#FF6A3D"/>
+    </linearGradient>
+    <filter id="soft-glow" x="8" y="8" width="240" height="240" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+
+  <circle cx="128" cy="128" r="101" stroke="#050816" stroke-width="34"/>
+  <circle cx="128" cy="128" r="101" stroke="#111933" stroke-width="26"/>
+
+  <circle
+    cx="128"
+    cy="128"
+    r="101"
+    stroke="url(#ring-gradient)"
+    stroke-width="18"
+    stroke-linecap="round"
+    stroke-dasharray="548 86"
+    stroke-dashoffset="65"
+  />
+
+  <circle
+    cx="128"
+    cy="128"
+    r="101"
+    stroke="#54DEFF"
+    stroke-opacity="0.4"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-dasharray="548 86"
+    stroke-dashoffset="65"
+    filter="url(#soft-glow)"
+  />
+
+  <path
+    d="M172 57C183 45 199 45 207 55C200 56 194 59 189 64C195 66 200 70 204 76C191 80 177 76 169 66C166 63 166 60 172 57Z"
+    fill="url(#accent-gradient)"
+  />
+  <path
+    d="M175 60C184 54 193 55 199 61C193 62 188 65 184 69C189 71 193 74 196 79C186 80 178 76 172 68C170 65 170 62 175 60Z"
+    fill="#FFE7B8"
+    fill-opacity="0.55"
+  />
+</svg>

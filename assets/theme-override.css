@@ -1,0 +1,1043 @@
+/*
+ * 文件说明书 (File Manual)
+ *
+ * 核心功能 (Core Function)
+ *   Nocturne Violet（子夜紫罗兰）主题覆盖层。在不修改原压缩 CSS 的前提下，
+ *   重写 :root 设计令牌并对输入框、按钮、气泡、顶栏、滚动条、聊天头像与
+ *   消息排布等关键组件做视觉增强。相较原 Slate+Indigo 主题：
+ *     - 底色带一丝紫调（#08060F），摆脱冷灰办公感，电影级夜景氛围；
+ *     - 主色由 Indigo 升级为 Violet（#A78BFA → #7C3AED 渐变），更克制、
+ *       更具"创作工具"人格，避免 Linear/Stripe 式的默认 Indigo 同质化；
+ *     - 点缀色引入 Fuchsia（#F0ABFC）做高光与链接强调；
+ *     - 错误色由 Red 切换为 Rose（#FB7185），与紫主调和谐不冲撞；
+ *     - Light 主题为 Stone Violet Day：石白底 #F5F4F7 + 纯白卡片 #FFFFFF
+ *       + 强 mauve 边框 #B9AFCB，确保输入框/按钮/卡片在纸面上真正"浮起"，
+ *       参照 Linear / Notion / Craft 的克制纸面美学，主色 Violet-600 点缀。
+ *
+ * 输入 (Input)
+ *   - 由 src/sidepanel.html 在原 sidepanel-*.css 之后 <link> 引入
+ *   - 依赖原始 CSS 中的类选择器命名 (e.g. .chat-compose__field, .btn, .btn.primary)
+ *   - 通过 :root / :root[data-theme=light] 接管全部设计令牌
+ *
+ * 输出 (Output)
+ *   - 全局配色、阴影、焦点环、边框对比度的统一视觉语言（Violet 系）
+ *   - 对聊天输入框、主副按钮、气泡、卡片、滚动条、聊天头像与消息边距的针对性
+ *     增强规则
+ *   - 输入框 focus 态的"圆环跑马灯"动态光环（conic-gradient + @property
+ *     + mask-composite 实现 1.5px 真·圆环，2.8s/圈，慢而优雅）
+ *   - 布局精简：隐藏废弃的 <aside class="nav"> 二级导航占位，消除
+ *     顶栏与主内容区之间的空白缝隙；section.card.chat 与子容器零间距
+ *   - 聊天气泡 Markdown 排版重塑：压制 h1~h6 字号放大、行内 code →
+ *     紫色胶囊标签、ul 紫色小圆点、blockquote 紫色左框卡片、hr 紫灰
+ *     渐变、表格斑马条纹等（仅作用于 .chat-bubble 内，不污染其他 UI）
+ *
+ * 定位 (Position)
+ *   - UI 主题层，位于资源层 (assets/)，是原主题的非破坏式增强
+ *   - 晚于原 CSS 加载，利用层叠顺序完成覆盖（不依赖 !important）
+ *
+ * 依赖 (Dependency)
+ *   - assets/sidepanel-CmzGDYcI.css 提供基础布局与类名骨架
+ *   - src/sidepanel.html 负责 link 顺序
+ *
+ * 维护规则 (Maintenance Rules)
+ *   1. 每次修改设计令牌或新增组件覆盖后，必须同步更新本说明书的
+ *      【核心功能】【输入】【输出】段落，确保文档与代码一致。
+ *   2. 禁止修改或删除本【维护规则】章节的内容。
+ *   3. 修改完成后，必须扫描 assets/ 目录下的 *_README.md 文档
+ *      （若存在），并同步其中关于本文件的描述。
+ */
+
+
+/* ============================================================
+ * 1. 设计令牌：暗色主题（默认） — Nocturne Violet
+ *    近黑带紫调的底色 + Violet 主色 + Fuchsia 点缀 + Rose 错误
+ *    追求"深夜创作室"的电影级氛围，而不是"办公软件"
+ * ============================================================ */
+:root {
+  /* —— 背景阶梯（由深到浅，带一丝紫调） —— */
+  --bg: #08060F;                 /* 最底层：近黑紫 */
+  --bg-accent: #0F0C17;          /* 次底：侧栏 */
+  --bg-elevated: #13101C;        /* 抬升层：卡片/次级按钮 */
+  --bg-hover: #1E1A2C;           /* 悬停态：深梅 */
+  --bg-muted: #1E1A2C;
+  --bg-content: #0A0814;
+
+  /* —— 面板 —— */
+  --card: #13101C;
+  --card-foreground: #ECE8F5;
+  --card-highlight: rgba(196, 181, 253, 0.04);  /* Violet-300 微高光 */
+  --popover: #16121F;
+  --popover-foreground: #ECE8F5;
+  --panel: #08060F;
+  --panel-strong: #13101C;
+  --panel-hover: #1E1A2C;
+
+  /* —— 顶栏/浮层玻璃背景 —— */
+  --chrome: rgba(8, 6, 15, 0.86);
+  --chrome-strong: rgba(8, 6, 15, 0.96);
+
+  /* —— 文本（带紫调的米白，不刺眼） —— */
+  --text: #ECE8F5;
+  --text-strong: #FAF8FF;
+  --chat-text: #ECE8F5;
+  --muted: #8B83A6;
+  --muted-strong: #A8A0BF;
+  --muted-foreground: #8B83A6;
+
+  /* —— 边框（Mauve 梅灰，明显高于底色） —— */
+  --border: #2E2840;
+  --border-strong: #433A5E;
+  --border-hover: #564D75;
+  --input: #2E2840;
+
+  /* —— 主色：Violet 子夜紫罗兰 —— */
+  --accent: #A78BFA;             /* violet-400，正常态 */
+  --accent-hover: #C4B5FD;       /* violet-300，hover/文字强调 */
+  --accent-muted: #8B5CF6;       /* violet-500 */
+  --accent-subtle: rgba(167, 139, 250, 0.16);
+  --accent-foreground: #ffffff;
+  --accent-glow: rgba(167, 139, 250, 0.40);
+  --primary: #7C3AED;            /* violet-600，实心按钮 */
+  --primary-foreground: #ffffff;
+  --secondary: #1E1A2C;
+  --secondary-foreground: #ECE8F5;
+
+  /* —— 副色：Fuchsia 洋红（点缀/高光/链接） —— */
+  --accent-2: #F0ABFC;           /* fuchsia-300 */
+  --accent-2-muted: rgba(240, 171, 252, 0.7);
+  --accent-2-subtle: rgba(240, 171, 252, 0.14);
+
+  /* —— 状态色 —— */
+  --ok: #34D399;                 /* emerald-400 */
+  --ok-muted: rgba(52, 211, 153, 0.75);
+  --ok-subtle: rgba(52, 211, 153, 0.14);
+  --destructive: #FB7185;        /* rose-400，与紫主色和谐 */
+  --destructive-foreground: #FAF8FF;
+  --warn: #FBBF24;
+  --warn-muted: rgba(251, 191, 36, 0.75);
+  --warn-subtle: rgba(251, 191, 36, 0.14);
+  --danger: #FB7185;
+  --danger-muted: rgba(251, 113, 133, 0.75);
+  --danger-subtle: rgba(251, 113, 133, 0.14);
+  --info: #93C5FD;               /* blue-300 */
+
+  /* —— 焦点环 —— */
+  --ring: #A78BFA;
+  --focus: rgba(167, 139, 250, 0.40);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--ring);
+  --focus-glow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--ring),
+    0 0 22px var(--accent-glow);
+
+  /* —— 细节 —— */
+  --grid-line: rgba(196, 181, 253, 0.05);
+
+  /* —— 阴影（紫调柔和投影，更有层次） —— */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md:
+    0 4px 14px rgba(0, 0, 0, 0.40),
+    0 0 0 1px rgba(196, 181, 253, 0.04);
+  --shadow-lg:
+    0 14px 32px rgba(0, 0, 0, 0.50),
+    0 0 0 1px rgba(196, 181, 253, 0.05);
+  --shadow-xl:
+    0 28px 56px rgba(0, 0, 0, 0.60),
+    0 0 0 1px rgba(196, 181, 253, 0.06);
+  --shadow-glow: 0 0 32px var(--accent-glow);
+}
+
+
+/* ============================================================
+ * 2. 设计令牌：亮色主题 — Stone Violet Day
+ *    以 Stone Violet（石白带微紫灰）为底，纯白卡片真正"浮"起，
+ *    Violet-600 主色做克制点缀。目标：Linear / Notion / Craft 级
+ *    的纸面高级感，告别"塑料冷 Lavender"。
+ * ============================================================ */
+:root[data-theme=light] {
+  /* —— 背景阶梯（关键：--bg 与 --bg-elevated 拉开差距，白卡片才能浮起） —— */
+  --bg: #F5F4F7;                 /* 石白，带一丝紫灰但不冷 */
+  --bg-accent: #EDEBF1;          /* 次底：侧栏/footer/compose 容器 */
+  --bg-elevated: #ffffff;        /* 纯白：卡片/输入框聚焦态 */
+  --bg-hover: #E4E1EB;           /* 悬停层 */
+  --bg-muted: #EDEBF1;
+  --bg-content: #EDEBF1;
+
+  --card: #ffffff;
+  --card-foreground: #1A1329;
+  --card-highlight: rgba(124, 58, 237, 0.025);
+  --popover: #ffffff;
+  --popover-foreground: #1A1329;
+  --panel: #F5F4F7;
+  --panel-strong: #EDEBF1;
+  --panel-hover: #E4E1EB;
+
+  --chrome: rgba(245, 244, 247, 0.88);
+  --chrome-strong: rgba(245, 244, 247, 0.98);
+
+  /* —— 文字（保留紫基调但加深主体文字，阅读对比度更好） —— */
+  --text: #231E33;
+  --text-strong: #0E0B18;
+  --chat-text: #231E33;
+  --muted: #6B6482;
+  --muted-strong: #494258;
+  --muted-foreground: #6B6482;
+
+  /* —— 边框（核心修复：大幅加深对比度） —— */
+  --border: #E4E1EB;             /* 默认：柔弱分割线 */
+  --border-strong: #B9AFCB;      /* 强边框：输入框/按钮 —— 确保在白底/灰底都看得见 */
+  --border-hover: #7D7193;       /* hover：强对比 */
+  --input: #B9AFCB;
+
+  --accent: #7C3AED;             /* violet-600 */
+  --accent-hover: #6D28D9;       /* violet-700 */
+  --accent-muted: #8B5CF6;
+  --accent-subtle: rgba(124, 58, 237, 0.10);
+  --accent-foreground: #ffffff;
+  --accent-glow: rgba(124, 58, 237, 0.25);
+  --primary: #7C3AED;
+  --primary-foreground: #ffffff;
+  --secondary: #EDEBF1;
+  --secondary-foreground: #231E33;
+
+  --accent-2: #C026D3;           /* fuchsia-600 */
+  --accent-2-muted: rgba(192, 38, 211, 0.75);
+  --accent-2-subtle: rgba(192, 38, 211, 0.10);
+
+  --ok: #059669;
+  --ok-muted: rgba(5, 150, 105, 0.75);
+  --ok-subtle: rgba(5, 150, 105, 0.10);
+  --destructive: #E11D48;        /* rose-600 */
+  --destructive-foreground: #ffffff;
+  --warn: #D97706;
+  --warn-muted: rgba(217, 119, 6, 0.75);
+  --warn-subtle: rgba(217, 119, 6, 0.10);
+  --danger: #E11D48;
+  --danger-muted: rgba(225, 29, 72, 0.75);
+  --danger-subtle: rgba(225, 29, 72, 0.10);
+  --info: #2563EB;
+
+  --ring: #7C3AED;
+  --focus: rgba(124, 58, 237, 0.25);
+  --focus-glow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--ring),
+    0 0 16px var(--accent-glow);
+
+  --grid-line: rgba(35, 30, 51, 0.05);
+
+  --shadow-sm: 0 1px 2px rgba(35, 30, 51, 0.06);
+  --shadow-md:
+    0 4px 14px rgba(35, 30, 51, 0.08),
+    0 0 0 1px rgba(35, 30, 51, 0.04);
+  --shadow-lg:
+    0 14px 32px rgba(35, 30, 51, 0.12),
+    0 0 0 1px rgba(35, 30, 51, 0.04);
+  --shadow-xl:
+    0 28px 56px rgba(35, 30, 51, 0.15),
+    0 0 0 1px rgba(35, 30, 51, 0.05);
+  --shadow-glow: 0 0 24px var(--accent-glow);
+}
+
+
+/* ============================================================
+ * 3. 输入框 / Textarea — 明显凹陷 + 清晰边框 + 焦点紫发光
+ *    解决"输入框底色跟页面融成一片"的核心痛点
+ * ============================================================ */
+.chat-compose__field textarea,
+.chat-compose .chat-compose__field textarea {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 rgba(196, 181, 253, 0.03),
+    0 1px 2px rgba(0, 0, 0, 0.22);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+.chat-compose__field textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+.chat-compose__field textarea:hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+.chat-compose__field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+  box-shadow:
+    0 0 0 3px var(--accent-subtle),
+    0 2px 14px rgba(167, 139, 250, 0.18);
+}
+
+/* ------------------------------------------------------------
+ * Light 主题 —— 输入框清晰度专项
+ * 核心痛点：白输入框融入浅色底色。
+ * 解法：强边框（B9AFCB，在 #F5F4F7 底与 #FFF 卡片上都有对比）
+ *       + inset 微凹 + 外 drop shadow 抬升，始终"看得见"。
+ * ------------------------------------------------------------ */
+:root[data-theme=light] .chat-compose__field textarea,
+:root[data-theme=light] .chat-compose .chat-compose__field textarea {
+  background: #ffffff;
+  border: 1px solid var(--border-strong);      /* B9AFCB, 强对比 */
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 2px rgba(35, 30, 51, 0.05),    /* 顶部内阴影，"凹"进纸面 */
+    0 1px 3px rgba(35, 30, 51, 0.06),          /* 外部阴影，在任何底色上都抬升 */
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;  /* 极细内高光，白底质感 */
+}
+:root[data-theme=light] .chat-compose__field textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+:root[data-theme=light] .chat-compose__field textarea:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  box-shadow:
+    inset 0 1px 2px rgba(35, 30, 51, 0.05),
+    0 2px 6px rgba(35, 30, 51, 0.07);
+}
+:root[data-theme=light] .chat-compose__field textarea:focus {
+  background: #ffffff;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px rgba(124, 58, 237, 0.14),        /* 紫色聚焦环 */
+    0 2px 12px rgba(124, 58, 237, 0.14),       /* 紫辉光 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);    /* 顶部高光 */
+}
+
+/* Light 主题 —— 通用 input/textarea 同步强化，避免设置页等场景糊成一片 */
+:root[data-theme=light] input[type="text"],
+:root[data-theme=light] input[type="search"],
+:root[data-theme=light] input[type="email"],
+:root[data-theme=light] input[type="password"],
+:root[data-theme=light] input[type="number"],
+:root[data-theme=light] input[type="url"],
+:root[data-theme=light] textarea {
+  background: #ffffff;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 2px rgba(35, 30, 51, 0.04),
+    0 1px 2px rgba(35, 30, 51, 0.04);
+}
+:root[data-theme=light] input[type="text"]:hover:not(:disabled),
+:root[data-theme=light] input[type="search"]:hover:not(:disabled),
+:root[data-theme=light] input[type="email"]:hover:not(:disabled),
+:root[data-theme=light] input[type="password"]:hover:not(:disabled),
+:root[data-theme=light] input[type="number"]:hover:not(:disabled),
+:root[data-theme=light] input[type="url"]:hover:not(:disabled),
+:root[data-theme=light] textarea:hover:not(:disabled) {
+  border-color: var(--border-hover);
+}
+:root[data-theme=light] input[type="text"]:focus,
+:root[data-theme=light] input[type="search"]:focus,
+:root[data-theme=light] input[type="email"]:focus,
+:root[data-theme=light] input[type="password"]:focus,
+:root[data-theme=light] input[type="number"]:focus,
+:root[data-theme=light] input[type="url"]:focus,
+:root[data-theme=light] textarea:focus {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px rgba(124, 58, 237, 0.14),
+    inset 0 1px 2px rgba(124, 58, 237, 0.04);
+}
+
+/* 通用文本输入框（用户可能用到的 input/textarea） */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="url"],
+textarea {
+  color: var(--text);
+}
+input[type="text"]:focus,
+input[type="search"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="url"]:focus,
+textarea:focus {
+  outline: none;
+}
+
+
+/* ============================================================
+ * 4. 按钮 — 更强的层级对比
+ *    - 次级按钮：elevated 底色 + 明显边框，hover 时亮一档
+ *    - 主按钮 (.btn.primary)：Violet 渐变 + Fuchsia 尾迹辉光
+ *    - 图标按钮：更清晰的 hover 反馈
+ * ============================================================ */
+.btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  box-shadow: 0 1px 0 rgba(196, 181, 253, 0.03) inset;
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text-strong);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+  background: var(--bg-hover);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 主按钮 —— Violet 渐变，hover 透出一点 Fuchsia 尾迹 */
+.btn.primary {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--primary) 100%);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 2px 6px rgba(124, 58, 237, 0.32);
+  font-weight: 600;
+}
+.btn.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--accent-hover) 0%, var(--accent) 100%);
+  border-color: var(--accent-hover);
+  color: var(--primary-foreground);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 4px 20px rgba(167, 139, 250, 0.48),
+    0 0 0 1px rgba(240, 171, 252, 0.22);
+}
+.btn.primary:active:not(:disabled) {
+  background: linear-gradient(180deg, var(--primary) 0%, var(--accent-muted) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 1px 3px rgba(124, 58, 237, 0.34);
+}
+
+/* 危险按钮 —— Rose，与主色和谐 */
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+.btn.danger:hover:not(:disabled) {
+  background: var(--danger-muted);
+  border-color: var(--danger);
+  box-shadow: 0 4px 14px rgba(251, 113, 133, 0.38);
+}
+
+/* 激活态按钮（如导航选中） */
+.btn.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 图标按钮 */
+.btn--icon {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+  color: var(--muted-strong);
+}
+.btn--icon:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+.btn--icon.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-subtle);
+}
+
+:root[data-theme=light] .btn {
+  background: #ffffff;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 1px 2px rgba(35, 30, 51, 0.05);
+}
+:root[data-theme=light] .btn:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: var(--border-hover);
+  color: var(--text-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 6px rgba(35, 30, 51, 0.08);
+}
+:root[data-theme=light] .btn:active:not(:disabled) {
+  background: var(--bg-hover);
+  box-shadow:
+    inset 0 1px 2px rgba(35, 30, 51, 0.08);
+}
+:root[data-theme=light] .btn--icon {
+  background: #ffffff;
+  border-color: var(--border-strong);
+  color: var(--muted-strong);
+}
+:root[data-theme=light] .btn--icon:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: var(--border-hover);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 6px rgba(35, 30, 51, 0.08);
+}
+:root[data-theme=light] .btn--icon.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+
+/* ============================================================
+ * 5. 聊天气泡 — AI / 用户 区分更清晰
+ * ============================================================ */
+.chat-bubble {
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 var(--card-highlight),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.chat-bubble:hover {
+  background: var(--panel-hover);
+}
+
+/* 用户气泡：Violet 浅底 + Violet 边框提示 */
+.chat-msg.user .chat-bubble,
+.chat-msg--user .chat-bubble,
+.chat-line.user .chat-bubble,
+.chat-line--user .chat-bubble {
+  background: var(--accent-subtle);
+  border-color: rgba(167, 139, 250, 0.30);
+  color: var(--text-strong);
+}
+:root[data-theme=light] .chat-msg.user .chat-bubble,
+:root[data-theme=light] .chat-msg--user .chat-bubble,
+:root[data-theme=light] .chat-line.user .chat-bubble,
+:root[data-theme=light] .chat-line--user .chat-bubble {
+  border-color: rgba(124, 58, 237, 0.35);
+}
+
+/* 聊天布局：缩小头像并收紧左右边缘，给正文腾出更多横向空间 */
+.chat-group {
+  gap: 8px;
+}
+.chat-group.assistant {
+  margin-left: -6px;
+}
+.chat-group.user {
+  margin-right: -6px;
+}
+.chat-avatar {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  flex: 0 0 28px;
+  font-size: 12px;
+}
+.chat-group-messages {
+  min-width: 0;
+  max-width: calc(100% - 36px);
+}
+.chat-group.user .chat-group-messages,
+.chat-group.user .chat-bubble {
+  margin-left: auto;
+}
+
+
+/* ============================================================
+ * 6. 顶栏 — 轻玻璃质感，与内容区分
+ * ============================================================ */
+.topbar {
+  background: var(--chrome);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+
+
+/* ============================================================
+ * 7. 卡片 / 面板 — 明显抬升感
+ * ============================================================ */
+.card,
+.chat-tool-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 var(--card-highlight),
+    0 1px 3px rgba(0, 0, 0, 0.20);
+}
+
+/* Light 主题 —— 卡片用更清晰的抬升阴影，不用暗色 rgba */
+:root[data-theme=light] .card,
+:root[data-theme=light] .chat-tool-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow:
+    0 1px 2px rgba(35, 30, 51, 0.05),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+/* Light 主题 —— 顶栏的玻璃模糊要在浅底上也有分隔感 */
+:root[data-theme=light] .topbar {
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(35, 30, 51, 0.03);
+}
+
+
+/* ============================================================
+ * 8. 滚动条 — 细、融入主题
+ * ============================================================ */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+  background-clip: content-box;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+
+/* ============================================================
+ * 9. 文本选中
+ * ============================================================ */
+::selection {
+  background: var(--accent-subtle);
+  color: var(--text-strong);
+}
+
+
+/* ============================================================
+ * 10. 聚焦可访问性 — 键盘焦点环 (Violet)
+ * ============================================================ */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.btn:focus-visible,
+.btn--icon:focus-visible,
+.chat-compose__field textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+.btn.primary:focus-visible {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 0 0 3px var(--accent-subtle),
+    0 4px 14px rgba(124, 58, 237, 0.38);
+}
+
+
+/* ============================================================
+ * 11. 输入框圆环跑马灯 — 常驻"呼吸心跳" + Focus 加速加亮
+ *     - 球场（pill/stadium）形状：textarea 与跑马灯环同步使用
+ *       border-radius: 9999px，两端完全圆弧，消除矩形转角
+ *     - 默认：5s 一圈的慢速心跳 + 低 opacity，存在但不抢戏
+ *     - Focus-within：加速到 2.8s + 满亮度，像"活过来"
+ *     - 1.5px 真·圆环，conic-gradient 从 transparent → accent →
+ *       accent-2(fuchsia) → transparent，形成约 100deg 亮弧拖尾
+ *     - 借助 @property 让 CSS 变量参与动画，性能仅次于 transform
+ *     - 使用 mask-composite 挖空中心，完全不影响 textarea 内部
+ *     - 兼容 Chrome / Edge / Safari 15.4+ / Firefox 128+
+ *       不支持的老浏览器自动回退为静态渐变边框，非破坏
+ * ============================================================ */
+@property --ring-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* 球场形状：wrapper + textarea 统一 pill 圆角 */
+.chat-compose__field {
+  position: relative;
+  isolation: isolate;
+  border-radius: 9999px;
+}
+
+.chat-compose__field textarea,
+.chat-compose .chat-compose__field textarea {
+  border-radius: 9999px;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+/* 跑马灯伪元素 —— 默认常驻，focus 时加速加亮 */
+.chat-compose__field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--ring-angle),
+    transparent 0deg,
+    var(--accent) 40deg,
+    var(--accent-2) 72deg,
+    transparent 110deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+          mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.6;                                        /* 默认低调 */
+  transition:
+    opacity 0.3s ease,
+    animation-duration 0.3s ease;
+  animation: ringMarch 5s linear infinite;             /* 默认慢速心跳 */
+  z-index: 2;
+}
+
+.chat-compose__field:focus-within::before {
+  opacity: 1;                                          /* 聚焦时满亮 */
+  animation-duration: 2.8s;                            /* 聚焦时加速 */
+}
+
+/* Focus 时略微收敛原来的 3px 光环，让跑马灯唱主角 */
+.chat-compose__field:focus-within textarea {
+  box-shadow:
+    0 2px 10px rgba(124, 58, 237, 0.12);
+}
+:root[data-theme=light] .chat-compose__field:focus-within textarea {
+  box-shadow:
+    0 2px 10px rgba(124, 58, 237, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+@keyframes ringMarch {
+  to { --ring-angle: 360deg; }
+}
+
+/* 尊重无障碍偏好：减弱动效 → 保留静态渐变，不再旋转 */
+@media (prefers-reduced-motion: reduce) {
+  .chat-compose__field::before {
+    animation: none;
+  }
+}
+
+
+/* ============================================================
+ * 12. 布局精简 — 去除已废弃的 aside.nav 空壳 + 残留空白
+ *     痛点：用户已手动清空二级导航内容，但 <aside class="nav">
+ *     容器仍占纵向空间；同时 header.topbar 底部 margin、main 顶部
+ *     margin 以及可能的父级 flex gap 都会在空壳被隐藏后继续留白。
+ *     这里做多层兜底：空壳整体 collapse + 周边 margin 归零。
+ * ============================================================ */
+
+/* Step 1: aside.nav 空壳完全 collapse（不占任何尺寸） */
+aside.nav,
+aside.nav:empty,
+aside[class^="nav"],
+aside[class*=" nav"] {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Step 2: 让 topbar 和 main 真正贴合（消除原有 margin 残留） */
+header.topbar {
+  margin-bottom: 0 !important;
+}
+main.content,
+main.content--chat,
+main.content.content--chat {
+  margin-top: 0 !important;
+}
+
+/* Step 3: 如果 openclaw-app 根容器用 flex + gap 布局，gap 本身
+ *         在 display:none 子元素上不会产生空间；但如果使用了
+ *         padding 做间距，这里保底把 topbar 与 main 间的潜在
+ *         顶部 padding-top 归零（保留水平 padding） */
+main.content--chat {
+  padding-top: 0 !important;
+}
+
+
+/* ============================================================
+ * 13. 会话卡片内部贴合 — section.card.chat 与子容器零间距
+ *     DOM：
+ *     <section class="card chat">
+ *       └─ <div class="chat-split-container">
+ *             └─ <div class="chat-main" style="flex:1 1 100%">
+ *       └─ <div class="chat-compose">
+ *
+ *     目标：去除 card.chat 的内边距与 flex gap，让 chat-main /
+ *     chat-compose 贴合 card 边缘，最大化可视会话区、消除"卡片
+ *     里套卡片"的空白感。仅影响 .card.chat（不污染其他 .card，
+ *     比如设置页的 card）。
+ * ============================================================ */
+
+/* (1) 外层 section.card.chat —— 清空 padding / gap，但保留 border 和圆角 */
+section.card.chat,
+.card.chat {
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+/* (2) 子容器 chat-split-container —— 彻底透明包裹层，不吃空间 */
+.card.chat > .chat-split-container,
+.chat-split-container {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* (3) chat-main —— 占满宽度，去除外边距；
+ *     注意：不动其内部的消息列表 padding，气泡才不会贴到边框 */
+.card.chat .chat-main,
+.chat-split-container > .chat-main {
+  margin: 0 !important;
+}
+
+/* (4) chat-compose 外层 —— 仅去除顶部和左右 padding；
+ *     保留极小底部呼吸 (8px)，避免 pill 输入框紧贴 card 底边框 */
+.card.chat > .chat-compose,
+section.card.chat > .chat-compose {
+  margin: 0 !important;
+  padding-top: 8px !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+  padding-bottom: 10px !important;
+}
+
+
+/* ============================================================
+ * 14. 聊天气泡 Markdown 渲染 — 不放大字号，仅靠加粗/颜色/胶囊
+ *     目标：AI 回复里即便使用了 # / ### / **x** / `code` / 表格
+ *     等 Markdown 元素，视觉层级也必须清晰，但字号始终等于正文，
+ *     保证侧边栏窄幅下不撑破排版。
+ *     作用域限定在 .chat-bubble 内，不污染其他 UI。
+ * ============================================================ */
+
+/* (1) 压制所有标题层级到正文字号；只用粗体 + accent 色做层级区分 */
+.chat-bubble :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1em !important;
+  font-weight: 700 !important;
+  line-height: 1.4 !important;
+  margin: 0.9em 0 0.4em !important;
+  letter-spacing: 0.01em;
+}
+.chat-bubble h1,
+.chat-bubble h2 {
+  color: var(--accent-hover);
+}
+.chat-bubble h3,
+.chat-bubble h4,
+.chat-bubble h5,
+.chat-bubble h6 {
+  color: var(--accent);
+}
+.chat-bubble > :first-child {
+  margin-top: 0 !important;
+}
+.chat-bubble > :last-child {
+  margin-bottom: 0 !important;
+}
+
+/* (2) 段落与粗体 */
+.chat-bubble p {
+  margin: 0.5em 0;
+  line-height: 1.62;
+}
+.chat-bubble strong,
+.chat-bubble b {
+  font-weight: 700;
+  color: var(--text-strong);
+}
+.chat-bubble em,
+.chat-bubble i {
+  color: var(--accent-2);
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* (3) 行内 code —— 自动渲染为"紫色胶囊标签"
+ *     这是本次改造的核心视觉：AI 只要用反引号包裹关键词，
+ *     就会被渲染成精致的 pill 标签。 */
+.chat-bubble :not(pre) > code {
+  display: inline-block;
+  padding: 1px 9px;
+  margin: 0 2px;
+  font-size: 0.92em;
+  font-family: inherit;
+  font-weight: 500;
+  background: var(--accent-subtle);
+  color: var(--accent-hover);
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  border-radius: 9999px;
+  vertical-align: baseline;
+  line-height: 1.55;
+  white-space: nowrap;
+}
+:root[data-theme=light] .chat-bubble :not(pre) > code {
+  color: var(--accent);
+  border-color: rgba(124, 58, 237, 0.22);
+}
+
+/* (4) 代码块 pre —— 紫框 + 等宽字体 + 柔和底色 */
+.chat-bubble pre {
+  background: var(--bg-accent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0.7em 0;
+  font-size: 0.88em;
+  line-height: 1.55;
+}
+.chat-bubble pre code {
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  margin: 0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+  font-weight: 400;
+  border: 0;
+  border-radius: 0;
+  display: inline;
+  white-space: pre;
+}
+
+/* (5) 列表 —— 自定义紫色小圆点替代默认 bullet */
+.chat-bubble ul,
+.chat-bubble ol {
+  padding-left: 1.35em;
+  margin: 0.5em 0;
+}
+.chat-bubble ul li,
+.chat-bubble ol li {
+  margin: 0.28em 0;
+  line-height: 1.6;
+}
+.chat-bubble ul {
+  list-style: none;
+}
+.chat-bubble ul > li {
+  position: relative;
+}
+.chat-bubble ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1em;
+  top: 0.68em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.9;
+}
+.chat-bubble ol > li::marker {
+  color: var(--accent);
+  font-weight: 600;
+}
+/* 嵌套列表：第二层圆点更淡更小 */
+.chat-bubble ul ul > li::before {
+  width: 4px;
+  height: 4px;
+  opacity: 0.6;
+  background: var(--accent-2);
+}
+
+/* (6) 引用块 blockquote —— accent 色左边框 + 柔和紫底 */
+.chat-bubble blockquote {
+  margin: 0.7em 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-subtle);
+  border-radius: 0 8px 8px 0;
+  color: var(--muted-strong);
+  font-style: normal;
+}
+.chat-bubble blockquote > :first-child {
+  margin-top: 0;
+}
+.chat-bubble blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* (7) 链接 —— accent 色 + 柔和紫下划线 */
+.chat-bubble a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(167, 139, 250, 0.38);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.15s ease, color 0.15s ease;
+}
+.chat-bubble a:hover {
+  color: var(--accent-hover);
+  text-decoration-color: var(--accent-hover);
+}
+
+/* (8) 水平分隔线 hr —— 柔和紫灰渐变 */
+.chat-bubble hr {
+  border: 0;
+  height: 1px;
+  margin: 1em 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--border-strong) 30%,
+    var(--border-strong) 70%,
+    transparent 100%
+  );
+}
+
+/* (9) 表格 —— 紫灰分割线 + 斑马条纹 */
+.chat-bubble table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.7em 0;
+  font-size: 0.95em;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.chat-bubble table th,
+.chat-bubble table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.chat-bubble table th {
+  background: var(--bg-hover);
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.chat-bubble table tr:last-child td {
+  border-bottom: 0;
+}
+.chat-bubble table tr:nth-child(even) td {
+  background: var(--card-highlight);
+}
+
