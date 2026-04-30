@@ -6,7 +6,7 @@
 const SETTINGS_KEY = "openclaw.control.settings.v1";
 const OLD_EXTENSION_ID = "mehnffpdgfjnndhhjabklokbpfedkemd";
 const DEFAULT_GATEWAY_URL = "ws://127.0.0.1:18789";
-const DEFAULT_TOKEN = "8be19321634a56d832bb89e93379c3860";
+const DEFAULT_TOKEN = "YOUR_GATEWAY_TOKEN_HERE";
 const DEFAULT_SESSION_KEY = "agent:main:main";
 
 // Override base path for the embedded Control UI

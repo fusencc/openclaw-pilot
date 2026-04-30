@@ -89,7 +89,7 @@ Le.chatFocusMode = !1;
   Le.gatewayUrl.startsWith("ws://chrome-extension") ||
   Le.gatewayUrl.includes("mehnffpdgfjnndhhjabklokbpfedkemd")) &&
   (Le.gatewayUrl = "ws://127.0.0.1:18789");
-Le.token || (Le.token = "8be19321634a56d832bb89e93379c3860");
+Le.token || (Le.token = "YOUR_GATEWAY_TOKEN_HERE");
 (!Le.sessionKey || Le.sessionKey === "main") &&
   (Le.sessionKey = "agent:main:main");
 localStorage.setItem(Tl, JSON.stringify(Le));

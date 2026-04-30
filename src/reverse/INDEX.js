@@ -55,6 +55,6 @@
 //    - 参考 src/reverse/rpc-methods.js 的 46 个方法
 //    - 参考 src/reverse/gateway-client.js 的 RPC 调用方式
 //    - WebSocket URL: ws://127.0.0.1:18789
-//    - 默认 Token: 8be19321634a56d832bb89e93379c3860
+//    - 默认 Token: YOUR_GATEWAY_TOKEN_HERE
 //
 // ============================================================
