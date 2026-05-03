@@ -27,6 +27,8 @@
  *     + mask-composite 实现 1.5px 真·圆环，2.8s/圈，慢而优雅）
  *   - 布局精简：隐藏废弃的 <aside class="nav"> 二级导航占位，消除
  *     顶栏与主内容区之间的空白缝隙；section.card.chat 与子容器零间距
+ *   - 交互面板 (chat-compose) 底色锁死：清除 base CSS 的透明渐变，
+ *     改用 --bg-accent（与侧边栏 .nav 同源）做实底，解决浮层透底问题
  *   - 聊天气泡 Markdown 排版重塑：压制 h1~h6 字号放大、行内 code →
  *     紫色胶囊标签、ul 紫色小圆点、blockquote 紫色左框卡片、hr 紫灰
  *     渐变、表格斑马条纹等（仅作用于 .chat-bubble 内，不污染其他 UI）
@@ -493,6 +495,25 @@ textarea:focus {
   background: var(--accent-subtle);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+
+/* ============================================================
+ * 4.5 交互面板 (chat-compose) — 锁死底色，对齐侧边栏
+ *     病灶：base CSS 的 linear-gradient 渐变到 transparent，
+ *     在侧边栏浮层上两头透底，深色浅色都看不清。
+ *     修复：用 --bg-accent（与侧边栏 .nav 同源）做实底，
+ *     清除渐变，确保交互面板始终有明确的底色。
+ * ============================================================ */
+.chat-compose {
+  background: var(--bg-accent) !important;
+  border-top: 1px solid var(--border);
+}
+:root[data-theme=light] .chat-compose {
+  background: var(--bg-accent) !important;
+}
+.shell--chat .chat-compose {
+  background: var(--bg-accent) !important;
 }
 
 

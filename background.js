@@ -187,6 +187,22 @@ function broadcastRelayStatus(connected) {
     .catch(() => {});
 }
 
+function broadcastRuntimeMessage(message) {
+  chrome.runtime.sendMessage(message).catch(() => {});
+  chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+    if (!tab?.id) return;
+    chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+  }).catch(() => {});
+}
+
+function broadcastSidepanelVisibility(visible) {
+  broadcastRuntimeMessage({ type: "SIDEPANEL_VISIBILITY", visible });
+}
+
+function broadcastFloatingWidgetState(payload = {}) {
+  broadcastRuntimeMessage({ type: "FLOATING_WIDGET_STATE", ...payload });
+}
+
 // --- Persist / restore attached tabs across SW restarts ---
 async function persistAttachedTabs() {
   try {
@@ -936,6 +952,67 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     });
     return true; // async response
+  }
+
+  if (msg?.type === "SET_SIDEPANEL_VISIBILITY") {
+    const visible = !!msg.visible;
+    chrome.storage.session
+      .set({ sidepanelVisible: visible })
+      .catch(() => {});
+    broadcastSidepanelVisibility(visible);
+    sendResponse({ ok: true, visible });
+    return false;
+  }
+
+  if (msg?.type === "GET_SIDEPANEL_VISIBILITY") {
+    chrome.storage.session
+      .get(["sidepanelVisible"])
+      .then((data) => {
+        sendResponse({ visible: !!data.sidepanelVisible });
+      })
+      .catch(() => sendResponse({ visible: false }));
+    return true;
+  }
+
+  if (msg?.type === "SET_FLOATING_WIDGET_STATE") {
+    const opened = !!msg.opened;
+    broadcastFloatingWidgetState({ opened, source: msg.source || "content-script" });
+    sendResponse({ ok: true, opened });
+    return false;
+  }
+
+  // 来自悬浮窗 [↗] 按钮：将 sidepanel 主动展开为完整侧边栏。
+  // chrome.sidePanel.open 必须在用户手势上下文调用；content-script 转发的消息
+  // 满足该条件，但需要显式提供 tabId / windowId 以确保命中正确窗口。
+  if (msg?.type === "OPEN_SIDEPANEL") {
+    const tabId = sender?.tab?.id;
+    const windowId = sender?.tab?.windowId;
+    const openOptions = tabId
+      ? { tabId }
+      : windowId
+        ? { windowId }
+        : null;
+    if (!openOptions || !chrome.sidePanel?.open) {
+      sendResponse({ ok: false, error: "no_target" });
+      return false;
+    }
+    chrome.sidePanel
+      .open(openOptions)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err?.message || String(err) }));
+    return true; // async response
+  }
+
+  // 当 sidepanel 已展开、用户在悬浮窗点 ✦ 总结时，悬浮窗的 iframe 不会被实际渲染，
+  // 走传统 postMessage 链路无效；此处把 prompt 直接广播给真正的 sidepanel iframe，
+  // 由 read-inject.js 在 sidepanel 模式下兜底接收并自动发送，保证总结能力 100% 可用。
+  if (msg?.type === "OPENCLAW_SIDEPANEL_SUMMARY") {
+    broadcastRuntimeMessage({
+      type: "OPENCLAW_SIDEPANEL_SUMMARY",
+      payload: msg.payload || {},
+    });
+    sendResponse({ ok: true });
+    return false;
   }
 
   if (msg?.type === "GET_PAGE_CONTENT_FOR_SIDEPANEL") {

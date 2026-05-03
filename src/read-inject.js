@@ -137,11 +137,11 @@
       btn.classList.add('smart-read-pinned');
       const t = title?.trim() ? title.trim() : '当前页面';
       btn.title = `已附加: ${t}\n输入问题后按 send/Enter 即可发送\n单击或双击退出`;
-      btn.setAttribute('aria-label', 'Smart Read (Pinned)');
+      btn.setAttribute('aria-label', '智能读取网页（常驻）');
     } else {
       btn.classList.remove('smart-read-pinned');
-      btn.title = 'Smart Read';
-      btn.setAttribute('aria-label', 'Smart Read');
+      btn.title = '智能读取网页';
+      btn.setAttribute('aria-label', '智能读取网页');
     }
   }
 
@@ -409,8 +409,8 @@
     const btn = document.createElement('button');
     btn.id = BUTTON_ID;
     btn.className = 'nav-collapse-toggle';
-    btn.title = 'Smart Read';
-    btn.setAttribute('aria-label', 'Smart Read');
+    btn.title = '智能读取网页';
+    btn.setAttribute('aria-label', '智能读取网页');
     btn.style.cssText = 'margin-right: 6px;';
     btn.innerHTML = `<span class="nav-collapse-toggle__icon" style="display:flex;align-items:center;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -431,7 +431,7 @@
   }
 
   function resetButton(btn) {
-    btn.title = 'Smart Read';
+    btn.title = '智能读取网页';
     btn.style.opacity = '';
     btn.style.pointerEvents = '';
     btn.style.color = '';

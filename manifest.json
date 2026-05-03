@@ -44,5 +44,16 @@
   "side_panel": {
     "default_path": "src/sidepanel.html"
   },
-  "version": "1.0.3"
+  "version": "1.0.3",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/sidepanel.html",
+        "src/read-inject.js",
+        "sidepanel.js",
+        "assets/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
