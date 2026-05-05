@@ -119,6 +119,7 @@ let pendingConnectId = null;      // id of pending gateway connect handshake
 let sessionCounter = 1;           // monotonic session id counter
 
 const attachedTabs = new Map();   // tabId -> { state, sessionId, targetId, attachOrder }
+const floatingOpenTabs = new Set(); // tabIds whose page floating widget is explicitly open
 const sessionToTab = new Map();   // sessionId -> tabId (main targets)
 const childSessionToTab = new Map(); // child sessionId -> tabId
 const pendingRequests = new Map(); // requestId -> { resolve, reject }
@@ -138,6 +139,14 @@ function getStackTrace() {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function hasOpenFloatingTabs() {
+  return floatingOpenTabs.size > 0;
+}
+
+function isFloatingOpenForTab(tabId) {
+  return floatingOpenTabs.has(tabId);
 }
 
 // --- Tab health check via debugger ---
@@ -203,7 +212,7 @@ function broadcastFloatingWidgetState(payload = {}) {
   broadcastRuntimeMessage({ type: "FLOATING_WIDGET_STATE", ...payload });
 }
 
-// --- Persist / restore attached tabs across SW restarts ---
+// --- Persist attached tabs during the current explicit user session ---
 async function persistAttachedTabs() {
   try {
     const tabs = [];
@@ -223,26 +232,9 @@ async function persistAttachedTabs() {
 
 async function restorePersistedTabs() {
   try {
-    const data = await chrome.storage.session.get(["persistedTabs", "nextSession"]);
+    const data = await chrome.storage.session.get(["nextSession"]);
     if (data.nextSession) sessionCounter = Math.max(sessionCounter, data.nextSession);
-    const tabs = data.persistedTabs || [];
-    for (const tab of tabs) {
-      attachedTabs.set(tab.tabId, {
-        state: "connected",
-        sessionId: tab.sessionId,
-        targetId: tab.targetId,
-        attachOrder: tab.attachOrder,
-      });
-      sessionToTab.set(tab.sessionId, tab.tabId);
-      setBadge(tab.tabId, "on");
-    }
-    for (const tab of tabs) {
-      if (!(await isTabAlive(tab.tabId))) {
-        attachedTabs.delete(tab.tabId);
-        sessionToTab.delete(tab.sessionId);
-        setBadge(tab.tabId, "off");
-      }
-    }
+    await chrome.storage.session.set({ persistedTabs: [] });
   } catch {}
 }
 
@@ -331,6 +323,12 @@ function onRelayDisconnect(reason) {
   }
   reattachingTabs.clear();
 
+  if (!hasOpenFloatingTabs()) {
+    disconnectRelayIfIdle();
+    broadcastRelayStatus(false);
+    return;
+  }
+
   for (const [tabId, info] of attachedTabs.entries()) {
     if (info.state === "connected") {
       setBadge(tabId, "connecting");
@@ -342,12 +340,14 @@ function onRelayDisconnect(reason) {
 }
 
 function scheduleReconnect() {
+  if (!hasOpenFloatingTabs() || attachedTabs.size === 0) return;
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   const delay = calculateBackoff(reconnectAttempt);
   reconnectAttempt++;
   console.log(`Scheduling reconnect attempt ${reconnectAttempt} in ${Math.round(delay)}ms`);
   reconnectTimer = setTimeout(async () => {
     reconnectTimer = null;
+    if (!hasOpenFloatingTabs() || attachedTabs.size === 0) return;
     try {
       await connectToRelay();
       reconnectAttempt = 0;
@@ -367,11 +367,28 @@ function cancelReconnect() {
   reconnectAttempt = 0;
 }
 
+function disconnectRelayIfIdle() {
+  if (attachedTabs.size !== 0 && hasOpenFloatingTabs()) return;
+  cancelReconnect();
+  const ws = relaySocket;
+  relaySocket = null;
+  currentGatewayToken = "";
+  pendingConnectId = null;
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    try { ws.close(1000, "no floating widget sessions"); } catch {}
+  }
+}
+
 // ============================================================
 // Re-announce attached tabs after reconnect
 // ============================================================
 
 async function reannounceAllTabs() {
+  if (!hasOpenFloatingTabs()) {
+    await detachAllDebuggerTabs("floating-closed");
+    return;
+  }
+
   for (const [tabId, info] of attachedTabs.entries()) {
     if (info.state !== "connected" || !info.sessionId || !info.targetId) continue;
 
@@ -538,8 +555,14 @@ function findTabByTargetId(targetId) {
 // ============================================================
 
 async function attachDebuggerToTab(tabId, options = {}) {
+  if (!isFloatingOpenForTab(tabId)) throw new Error("Refusing debugger attach without an open floating widget on this tab");
+
   const target = { tabId };
   await chrome.debugger.attach(target, "1.3");
+  if (!isFloatingOpenForTab(tabId)) {
+    await chrome.debugger.detach(target).catch(() => {});
+    throw new Error("Floating widget closed before debugger attach completed");
+  }
   await chrome.debugger.sendCommand(target, "Page.enable").catch(() => {});
 
   const targetInfo = (await chrome.debugger.sendCommand(target, "Target.getTargetInfo"))?.targetInfo;
@@ -603,43 +626,68 @@ async function detachDebuggerFromTab(tabId, reason) {
   chrome.action.setTitle({ tabId, title: "OpenClaw Browser Relay (click to attach/detach)" });
   broadcastRelayStatus(false);
   await persistAttachedTabs();
+  disconnectRelayIfIdle();
+}
+
+async function detachAllDebuggerTabs(reason) {
+  const tabIds = Array.from(attachedTabs.keys());
+  for (const tabId of tabIds) {
+    await detachDebuggerFromTab(tabId, reason);
+  }
 }
 
 // ============================================================
 // Toggle Relay (attach/detach active tab)
 // ============================================================
 
-async function toggleRelayOnActiveTab() {
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tabId = activeTab?.id;
-  if (!tabId || toggleLock.has(tabId)) return;
+async function setRelayForTab(tabId, enabled, source = "floating-widget") {
+  if (!tabId) return;
+
+  if (toggleLock.has(tabId)) {
+    if (enabled) return;
+    floatingOpenTabs.delete(tabId);
+    reattachingTabs.delete(tabId);
+    if (attachedTabs.has(tabId)) await detachDebuggerFromTab(tabId, source);
+    disconnectRelayIfIdle();
+    return;
+  }
 
   toggleLock.add(tabId);
   try {
-    // If tab is mid-reattach, cancel it
     if (reattachingTabs.has(tabId)) {
       reattachingTabs.delete(tabId);
       setBadge(tabId, "off");
-      chrome.action.setTitle({ tabId, title: "OpenClaw Browser Relay (click to attach/detach)" });
+      chrome.action.setTitle({ tabId, title: "OpenClaw Browser Relay (floating widget closed)" });
+    }
+
+    const connected = attachedTabs.get(tabId)?.state === "connected";
+    if (!enabled) {
+      floatingOpenTabs.delete(tabId);
+      if (connected || attachedTabs.has(tabId)) await detachDebuggerFromTab(tabId, source);
+      if (!hasOpenFloatingTabs()) await detachAllDebuggerTabs("floating-all-closed");
+      disconnectRelayIfIdle();
       return;
     }
 
-    // If already connected, detach
-    if (attachedTabs.get(tabId)?.state === "connected") {
-      await detachDebuggerFromTab(tabId, "toggle");
-      return;
-    }
+    floatingOpenTabs.add(tabId);
+    if (connected) return;
 
-    // Otherwise, attach
     cancelReconnect();
     attachedTabs.set(tabId, { state: "connecting" });
     setBadge(tabId, "connecting");
-    chrome.action.setTitle({ tabId, title: "OpenClaw Browser Relay: connecting to local relay…" });
+    chrome.action.setTitle({ tabId, title: "OpenClaw Browser Relay: connecting from floating widget…" });
 
     try {
       await connectToRelay();
+      if (!isFloatingOpenForTab(tabId)) {
+        attachedTabs.delete(tabId);
+        setBadge(tabId, "off");
+        disconnectRelayIfIdle();
+        return;
+      }
       await attachDebuggerToTab(tabId);
     } catch (err) {
+      floatingOpenTabs.delete(tabId);
       attachedTabs.delete(tabId);
       setBadge(tabId, "error");
       chrome.action.setTitle({ tabId, title: "OpenClaw Browser Relay: relay not running (open options for setup)" });
@@ -647,10 +695,21 @@ async function toggleRelayOnActiveTab() {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn("attach failed", msg, getStackTrace());
       broadcastRelayStatus(false);
+      disconnectRelayIfIdle();
     }
   } finally {
     toggleLock.delete(tabId);
   }
+}
+
+async function toggleRelayOnActiveTab() {
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tabId = activeTab?.id;
+  if (!tabId) return;
+  floatingOpenTabs.delete(tabId);
+  if (attachedTabs.has(tabId)) await detachDebuggerFromTab(tabId, "manual-toggle-detach");
+  if (!hasOpenFloatingTabs()) await detachAllDebuggerTabs("manual-toggle-detach-all");
+  disconnectRelayIfIdle();
 }
 
 // ============================================================
@@ -658,6 +717,8 @@ async function toggleRelayOnActiveTab() {
 // ============================================================
 
 async function executeCDPCommand(msg) {
+  if (!hasOpenFloatingTabs()) throw new Error("OpenClaw floating widget is closed; debugger is detached");
+
   const method = String(msg?.params?.method || "").trim();
   const params = msg?.params?.params || undefined;
   const sessionId = typeof msg?.params?.sessionId === "string" ? msg.params.sessionId : undefined;
@@ -771,18 +832,25 @@ async function onDebuggerDetach(source, reason) {
   const tabId = source.tabId;
   if (!tabId || !attachedTabs.has(tabId)) return;
 
+  if (!isFloatingOpenForTab(tabId)) {
+    await detachDebuggerFromTab(tabId, reason);
+    return;
+  }
+
   // User cancelled or opened devtools — clean detach
   if (reason === "canceled_by_user" || reason === "replaced_with_devtools") {
+    floatingOpenTabs.delete(tabId);
     detachDebuggerFromTab(tabId, reason);
     return;
   }
 
   // Check if tab still exists
   let tab;
-  try { tab = await chrome.tabs.get(tabId); } catch { detachDebuggerFromTab(tabId, reason); return; }
+  try { tab = await chrome.tabs.get(tabId); } catch { floatingOpenTabs.delete(tabId); detachDebuggerFromTab(tabId, reason); return; }
 
   // Don't reattach chrome:// or extension pages
   if (tab.url?.startsWith("chrome://") || tab.url?.startsWith("chrome-extension://")) {
+    floatingOpenTabs.delete(tabId);
     detachDebuggerFromTab(tabId, reason);
     return;
   }
@@ -818,8 +886,8 @@ async function onDebuggerDetach(source, reason) {
   const delays = [200, 500, 1000, 2000, 4000];
   for (let i = 0; i < delays.length; i++) {
     await new Promise((r) => setTimeout(r, delays[i]));
-    if (!reattachingTabs.has(tabId)) return;
-    try { await chrome.tabs.get(tabId); } catch { reattachingTabs.delete(tabId); setBadge(tabId, "off"); return; }
+    if (!reattachingTabs.has(tabId) || !isFloatingOpenForTab(tabId)) return;
+    try { await chrome.tabs.get(tabId); } catch { reattachingTabs.delete(tabId); floatingOpenTabs.delete(tabId); setBadge(tabId, "off"); return; }
     if (relaySocket && relaySocket.readyState === WebSocket.OPEN) {
       try {
         await attachDebuggerToTab(tabId, { skipAttachedEvent: false });
@@ -856,6 +924,22 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
   });
 });
 
+chrome.tabs.onRemoved.addListener((tabId) => {
+  runAfterInit(async () => {
+    floatingOpenTabs.delete(tabId);
+    reattachingTabs.delete(tabId);
+    attachedTabs.delete(tabId);
+    for (const [sid, tid] of childSessionToTab.entries()) {
+      if (tid === tabId) childSessionToTab.delete(sid);
+    }
+    for (const [sid, tid] of sessionToTab.entries()) {
+      if (tid === tabId) sessionToTab.delete(sid);
+    }
+    await persistAttachedTabs();
+    disconnectRelayIfIdle();
+  });
+});
+
 // ============================================================
 // Extension Install / Startup
 // ============================================================
@@ -882,7 +966,7 @@ chrome.runtime.onInstalled.addListener(() => { chrome.runtime.openOptionsPage();
 
 chrome.alarms.create("relay-keepalive", { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === "relay-keepalive" && (await initPromise, attachedTabs.size !== 0)) {
+  if (alarm.name === "relay-keepalive" && (await initPromise, attachedTabs.size !== 0 && hasOpenFloatingTabs())) {
     for (const [tabId, info] of attachedTabs.entries()) {
       if (info.state === "connected") {
         setBadge(tabId, relaySocket && relaySocket.readyState === WebSocket.OPEN ? "on" : "connecting");
@@ -900,13 +984,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // ============================================================
 
 const initPromise = restorePersistedTabs();
-initPromise.then(() => {
-  if (attachedTabs.size > 0) {
-    connectToRelay()
-      .then(() => { reconnectAttempt = 0; return reannounceAllTabs(); })
-      .catch(() => { scheduleReconnect(); });
-  }
-});
+initPromise.then(() => {});
 
 async function runAfterInit(fn) {
   await initPromise;
@@ -976,6 +1054,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg?.type === "SET_FLOATING_WIDGET_STATE") {
     const opened = !!msg.opened;
+    const tabId = sender?.tab?.id;
+    if (tabId) {
+      runAfterInit(() => setRelayForTab(tabId, opened, msg.source || "floating-widget"));
+    }
     broadcastFloatingWidgetState({ opened, source: msg.source || "content-script" });
     sendResponse({ ok: true, opened });
     return false;

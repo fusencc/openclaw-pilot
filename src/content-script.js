@@ -1,6 +1,6 @@
 // # 文件说明书 (Folder Manual Template)
 // ## 核心功能 (Core Function)
-// 注入网页端“悬浮猫咪入口 + 悬浮面板 iframe”，并通过同源展开动效把入口与面板连成一体，同时提供页面内容提取能力给 sidepanel/浮窗做摘要与上下文补全。
+// 注入网页端“悬浮猫咪入口 + 悬浮面板壳”，打开时才挂载浮窗 iframe，并通过同源展开动效把入口与面板连成一体，同时提供页面内容提取能力给 sidepanel/浮窗做摘要与上下文补全。
 //
 // ## 输入 (Input)
 // - 页面 DOM 与视口尺寸（用于定位悬浮入口与面板）
@@ -8,8 +8,8 @@
 // - 扩展运行时消息：`GET_PAGE_CONTENT`（返回页面标题/URL/正文）
 //
 // ## 输出 (Output)
-// - 网页端 DOM 注入：悬浮猫咪按钮与浮窗面板壳（含 iframe 指向 `src/sidepanel.html?floating=1`）
-// - 交互：点击开关、hover 延迟展开、同源展开动效、自动避让图标避免面板重叠、点击外部/ESC 收起、移动超过阈值才进入拖拽，避免普通点击被拖拽逻辑抢走
+// - 网页端 DOM 注入：悬浮猫咪按钮与浮窗面板壳；打开时挂载 iframe 指向 `src/sidepanel.html?floating=1`，关闭即卸载
+// - 交互：点击开关、同源展开动效、自动避让图标避免面板重叠、点击外部/ESC 收起、移动超过阈值才进入拖拽，避免普通点击被拖拽逻辑抢走
 // - 运行时消息响应：返回 `{ title, url, content, siteName }`
 // - 状态广播：向后台发送 `SET_FLOATING_WIDGET_STATE`（opened true/false）
 //
@@ -41,7 +41,6 @@
     PANEL_W: 336,
     PANEL_H: 448,
     PANEL_SCALE: 0.8,
-    HOVER_OPEN_MS: 180,
     OPENING_PULSE_MS: 220,
     EDGE_PADDING: 8,
     DRAG_THRESHOLD: 5,
@@ -264,10 +263,6 @@
 
     const panel = document.createElement('div');
     panel.className = 'panel';
-    const iframe = document.createElement('iframe');
-    iframe.allow = 'clipboard-read; clipboard-write';
-    iframe.src = chrome.runtime.getURL('src/sidepanel.html?floating=1');
-    panel.appendChild(iframe);
 
     shadow.append(style, wrap, cat, panel);
 
@@ -283,7 +278,6 @@
     const { cat, panel } = buildWidget(shadow);
 
     let opened = false;
-    let hoverOpenTimer = null;
     let openingPulseTimer = null;
     let dragging = false;
     let pointerDown = null;
@@ -399,9 +393,23 @@
       }, FLOATING.OPENING_PULSE_MS);
     }
 
+    function mountPanelIframe() {
+      if (panel.querySelector('iframe')) return;
+      const iframe = document.createElement('iframe');
+      iframe.allow = 'clipboard-read; clipboard-write';
+      iframe.src = chrome.runtime.getURL('src/sidepanel.html?floating=1');
+      panel.replaceChildren(iframe);
+    }
+
+    function unmountPanelIframe() {
+      panel.replaceChildren();
+    }
+
     function setOpened(next, source = 'content-script') {
       const wasOpened = opened;
       opened = !!next;
+
+      if (opened) mountPanelIframe();
 
       panel.classList.toggle('open', opened);
       cat.classList.toggle('panel-open', opened);
@@ -416,6 +424,7 @@
           openingPulseTimer = null;
         }
         cat.classList.remove('panel-opening');
+        unmountPanelIframe();
       }
 
       chrome.runtime.sendMessage({ type: 'SET_FLOATING_WIDGET_STATE', opened, source }).catch(() => {});
@@ -424,29 +433,13 @@
     const initialPos = await loadPos();
     positionElements(initialPos);
 
-    function cancelHoverOpen() {
-      if (hoverOpenTimer) { clearTimeout(hoverOpenTimer); hoverOpenTimer = null; }
-    }
-
-    function scheduleOpen() {
-      cancelHoverOpen();
-      hoverOpenTimer = setTimeout(() => setOpened(true, 'hover'), FLOATING.HOVER_OPEN_MS);
-    }
-
-    // hover open (close only via click-outside or ESC)
-    cat.addEventListener('mouseenter', () => {
-      if (dragging) return;
-      scheduleOpen();
-    });
-
-    // click toggles (more deterministic than纯 hover)
+    // click toggles the floating panel and the debugger relay lifecycle.
     cat.addEventListener('click', (e) => {
       e.preventDefault();
       if (suppressNextClick) {
         suppressNextClick = false;
         return;
       }
-      cancelHoverOpen();
       setOpened(!opened, 'click');
     });
 
@@ -491,7 +484,6 @@
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
       };
-      cancelHoverOpen();
     });
 
     cat.addEventListener('pointermove', (e) => {
