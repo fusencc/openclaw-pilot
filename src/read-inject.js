@@ -1,6 +1,6 @@
 // # 文件说明书 (Folder Manual Template)
 // ## 核心功能 (Core Function)
-// 在 OpenClaw 侧边栏页面注入“Smart Read”按钮，并注入一组 UI CSS 让底部输入区与按钮区更紧凑、对齐且不溢出；提供双模式交互：单击进行网页中文摘要并自动发送（按当前约定输出为加粗段首 + 引用块标题/摘要 + Markdown 表格核心内容 + 行内代码追问的紧凑多重格式）；双击进入“常驻附文模式”（按钮变绿色常驻态），此后用户按原生 send/Enter 发送时自动把网页标题/URL/正文作为参考资料拼接到用户输入后一并发送。按钮具备三层鲁棒性防护（fetch 超时、处理中看门狗、入口处预检自愈），确保在 MV3 service worker 被回收或 SPA 路由切换等异常场景下仍可反复点击、不会僵死。
+// 在 OpenClaw 侧边栏页面注入“Smart Read”按钮，并注入一组 UI CSS 让底部输入区与按钮区更紧凑、对齐且不溢出；提供双模式交互：单击进行网页中文摘要并自动发送（按当前约定输出为加粗段首 + 引用块标题/摘要 + Markdown 表格核心内容 + 行内代码追问的紧凑多重格式）；双击进入“常驻附文模式”（按钮变绿色常驻态），此后用户按原生 send/Enter 发送时自动把网页标题/URL/正文作为参考资料拼接到用户输入后一并发送。floating iframe 首次注入按钮后会自动进入常驻附文模式。按钮具备三层鲁棒性防护（fetch 超时、处理中看门狗、入口处预检自愈），确保在 MV3 service worker 被回收或 SPA 路由切换等异常场景下仍可反复点击、不会僵死。
 //
 // ## 输入 (Input)
 // - 浏览器 Sidepanel DOM（如 `.chat-compose__field textarea`、`.chat-compose__actions`、`.topbar-status`）
@@ -9,7 +9,7 @@
 // ## 输出 (Output)
 // - DOM 注入：顶部 `Smart Read` 按钮
 // - 样式注入：一段 `style`（id: `openclaw-ui-polish`）用于压缩/对齐 UI
-// - 行为：单击触发“中文总结直发”（输出格式固定为：**网页标题** + 引用块标题/URL、**摘要分析** + 引用块一句话摘要、**核心原内容分析：** + Markdown 表格、**可追问方向** + 行内代码问题）；双击进入“常驻附文”，拦截 send/Enter 并拼接网页参考资料后放行发送
+// - 行为：单击触发“中文总结直发”（输出格式固定为：**网页标题** + 引用块标题/URL、**摘要分析** + 引用块一句话摘要、**核心原内容分析：** + Markdown 表格、**可追问方向** + 行内代码问题）；双击进入“常驻附文”，floating iframe 首次打开时自动进入“常驻附文”，拦截 send/Enter 并拼接网页参考资料后放行发送
 // - 鲁棒性：`fetchPageData` 8s 超时（避免 Promise 永久 pending）、`runQuickSummary`/`enterPinnedMode` 15s 看门狗（强制复位 isProcessing 与按钮视觉态）、入口处 `forceRecoverIfStuck` 预检自愈
 //
 // ## 定位 (Position)
@@ -79,6 +79,7 @@
   let processingStartAt = 0;
   const MAX_PROCESSING_MS = 15000; // 超过此时长强制自愈，防止 MV3 消息链路异常导致僵死
   let bypassNextSend = false;
+  let floatingDefaultPinnedAttempted = false;
 
   function tinyDelay(ms) {
     return new Promise(r => setTimeout(r, ms));
@@ -86,6 +87,15 @@
 
   function getSmartReadBtn() {
     return document.getElementById(BUTTON_ID);
+  }
+
+  function isFloatingPanel() {
+    try {
+      if (document.documentElement?.dataset?.openclawFloating === 'true') return true;
+      return new URLSearchParams(window.location.search).get('floating') === '1';
+    } catch {
+      return false;
+    }
   }
 
   function getTextarea() {
@@ -600,6 +610,18 @@
     }
   }
 
+  function scheduleFloatingDefaultPinnedMode() {
+    if (floatingDefaultPinnedAttempted || !isFloatingPanel()) return;
+    const btn = getSmartReadBtn();
+    if (!btn || mode === MODE.PINNED) return;
+
+    floatingDefaultPinnedAttempted = true;
+    setTimeout(() => {
+      if (mode !== MODE.DEFAULT) return;
+      enterPinnedMode();
+    }, 0);
+  }
+
   function exitPinnedMode(reason) {
     cachedPageData = null;
     mode = MODE.DEFAULT;
@@ -732,6 +754,7 @@
 
     if (injected) {
       attachSendInterceptor();
+      scheduleFloatingDefaultPinnedMode();
       const btn = getSmartReadBtn();
       if (btn && mode === MODE.PINNED) setPinnedVisual(btn, true, cachedPageData?.title);
     }
