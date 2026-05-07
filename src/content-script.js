@@ -9,7 +9,7 @@
 //
 // ## 输出 (Output)
 // - 网页端 DOM 注入：悬浮猫咪按钮与浮窗面板壳；打开时挂载 iframe 指向 `src/sidepanel.html?floating=1`，关闭即卸载
-// - 交互：点击开关、同源展开动效、自动避让图标避免面板重叠、点击外部/ESC 收起、移动超过阈值才进入拖拽，避免普通点击被拖拽逻辑抢走
+// - 交互：点击开关、hover 延迟展开、同源展开动效、自动避让图标避免面板重叠、点击外部/ESC 收起、快速重复点击防抖、移动超过阈值才进入拖拽，避免普通点击被拖拽逻辑抢走
 // - 运行时消息响应：返回 `{ title, url, content, siteName }`
 // - 状态广播：向后台发送 `SET_FLOATING_WIDGET_STATE`（opened true/false）
 //
@@ -19,7 +19,7 @@
 // ## 依赖 (Dependency)
 // - `manifest.json`: content_scripts 注入声明、web_accessible_resources 放行浮窗资源
 // - `src/sidepanel.html`: 作为 floating iframe 的承载页面（`?floating=1`）
-// - `background.js`: 处理 `SET_FLOATING_WIDGET_STATE`、`OPEN_SIDEPANEL` 等消息
+// - `background.js`: 处理 `SET_FLOATING_WIDGET_STATE` 等消息
 // - `assets/pet-cat.png`: 悬浮入口图标
 //
 // ## 维护规则 (Maintenance Rules)
@@ -41,7 +41,9 @@
     PANEL_W: 336,
     PANEL_H: 448,
     PANEL_SCALE: 0.8,
+    HOVER_OPEN_MS: 180,
     OPENING_PULSE_MS: 220,
+    RAPID_CLICK_SUPPRESS_MS: 320,
     EDGE_PADDING: 8,
     DRAG_THRESHOLD: 5,
     Z: 2147483647,
@@ -278,11 +280,13 @@
     const { cat, panel } = buildWidget(shadow);
 
     let opened = false;
+    let hoverOpenTimer = null;
     let openingPulseTimer = null;
     let dragging = false;
     let pointerDown = null;
     let dragOffset = { x: 0, y: 0 };
     let suppressNextClick = false;
+    let lastCatClickAt = 0;
 
     function toPercent(value) {
       return `${Math.round(clamp(value, 0, 100))}%`;
@@ -433,6 +437,26 @@
     const initialPos = await loadPos();
     positionElements(initialPos);
 
+    function cancelHoverOpen() {
+      if (!hoverOpenTimer) return;
+      clearTimeout(hoverOpenTimer);
+      hoverOpenTimer = null;
+    }
+
+    function scheduleHoverOpen() {
+      cancelHoverOpen();
+      hoverOpenTimer = setTimeout(() => {
+        hoverOpenTimer = null;
+        setOpened(true, 'hover');
+      }, FLOATING.HOVER_OPEN_MS);
+    }
+
+    // hover open (close only via click-outside, ESC, drag, or explicit click toggle)
+    cat.addEventListener('mouseenter', () => {
+      if (dragging || opened) return;
+      scheduleHoverOpen();
+    });
+
     // click toggles the floating panel and the debugger relay lifecycle.
     cat.addEventListener('click', (e) => {
       e.preventDefault();
@@ -440,13 +464,14 @@
         suppressNextClick = false;
         return;
       }
+      const now = Date.now();
+      if (now - lastCatClickAt < FLOATING.RAPID_CLICK_SUPPRESS_MS) {
+        lastCatClickAt = now;
+        return;
+      }
+      lastCatClickAt = now;
+      cancelHoverOpen();
       setOpened(!opened, 'click');
-    });
-
-    // dblclick: open real sidepanel
-    cat.addEventListener('dblclick', (e) => {
-      e.preventDefault();
-      chrome.runtime.sendMessage({ type: 'OPEN_SIDEPANEL' }).catch(() => {});
     });
 
     // click outside -> close
@@ -494,6 +519,7 @@
       if (!dragging && !movedEnough) return;
       if (!dragging) {
         dragging = true;
+        cancelHoverOpen();
         suppressNextClick = true;
         setOpened(false, 'drag');
       }
