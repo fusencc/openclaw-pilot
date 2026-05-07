@@ -465,13 +465,6 @@ function startGatewayHandshake(payload) {
 // Show help page on first error
 // ============================================================
 
-async function showHelpOnFirstError() {
-  try {
-    if ((await chrome.storage.local.get(["helpOnErrorShown"])).helpOnErrorShown === true) return;
-    await chrome.storage.local.set({ helpOnErrorShown: true });
-    await chrome.runtime.openOptionsPage();
-  } catch {}
-}
 
 // ============================================================
 // Relay Message Handler
@@ -691,7 +684,6 @@ async function setRelayForTab(tabId, enabled, source = "floating-widget") {
       attachedTabs.delete(tabId);
       setBadge(tabId, "error");
       chrome.action.setTitle({ tabId, title: "OpenClaw Browser Relay: relay not running (open options for setup)" });
-      showHelpOnFirstError();
       const msg = err instanceof Error ? err.message : String(err);
       console.warn("attach failed", msg, getStackTrace());
       broadcastRelayStatus(false);
@@ -946,7 +938,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 async function registerDefaultOriginRules() {
   try {
-    chrome.runtime.setUninstallURL("https://tally.so/r/pbBBWE").catch((e) => console.debug("Set uninstall URL failed", e));
+
     await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [901, 902], addRules: DEFAULT_ORIGIN_RULES });
     console.log("[OpenClaw Ext] Default origin rules (18789, 18792) registered.");
   } catch (err) {
@@ -958,7 +950,6 @@ chrome.runtime.onInstalled.addListener(registerDefaultOriginRules);
 chrome.runtime.onStartup.addListener(registerDefaultOriginRules);
 registerDefaultOriginRules();
 
-chrome.runtime.onInstalled.addListener(() => { chrome.runtime.openOptionsPage(); });
 
 // ============================================================
 // Keepalive Alarm (every 30s)
